@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WebRTC SDP 信令 Demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>WebRTC SDP 信令交换 Demo</h1>
+
+  <!-- WSS 证书提示 -->
+  <div class="controls" id="wss-notice" style="display:none; background:#fef3c7; border-color:#f59e0b;">
+    <p style="margin:0; color:#92400e; font-size:0.85rem;">
+      <strong>WSS 注意：</strong>使用 WSS 需要先信任自签名证书。
+      请先访问 <a href="https://localhost:8768" target="_blank" style="color:#7c3aed;">https://localhost:8768</a> ，
+      点击「高级」→「继续访问 localhost」，然后回到本页连接。
+    </p>
+  </div>
+
+  <!-- 控制面板 -->
+  <div class="controls">
+    <div class="control-row">
+      <label for="server-url">服务器</label>
+      <input
+        type="text"
+        id="server-url"
+        value="ws://localhost:8767"
+        placeholder="ws://localhost:8765 或 wss://localhost:8766"
+        spellcheck="false"
+      />
+    </div>
+    <div class="control-row">
+      <label for="room-id">房间 ID</label>
+      <input
+        type="text"
+        id="room-id"
+        value="room-001"
+        placeholder="输入房间 ID（两端需相同）"
+        spellcheck="false"
+      />
+    </div>
+    <div class="control-row">
+      <button class="btn btn-primary"    id="btn-connect">连接服务器</button>
+      <button class="btn btn-secondary"  id="btn-disconnect" disabled>断开连接</button>
+      <button class="btn btn-success"    id="btn-call"       disabled>开始通话</button>
+      <button class="btn btn-danger"     id="btn-hangup"     disabled>挂断</button>
+    </div>
+  </div>
+
+  <!-- 视频区域 -->
+  <div class="video-container">
+    <div class="video-box">
+      <h3>本地视频（自己）</h3>
+      <video id="local-video" autoplay muted playsinline></video>
+    </div>
+    <div class="video-box">
+      <h3>远端视频（对方）</h3>
+      <video id="remote-video" autoplay playsinline></video>
+    </div>
+  </div>
+
+  <!-- 状态栏 -->
+  <div id="status-bar">
+    <span class="status-dot disconnected" id="status-dot"></span>
+    等待连接...
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
