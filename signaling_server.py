@@ -282,16 +282,18 @@ async def main() -> None:
 
     servers = [ws_server]
 
-    # 启动 WSS 服务（仅信令，不提供静态文件）
+    # 启动 WSS 服务（同时提供 HTTP 静态文件）
     if ssl_ctx:
         wss_server = await websockets.serve(
             signaling_handler,
             WSS_HOST,
             WSS_PORT,
             ssl=ssl_ctx,
+            process_request=http_handler,
         )
         servers.append(wss_server)
         logger.info(f"WSS 信令服务已启动: wss://{WSS_HOST}:{WSS_PORT}")
+        logger.info(f"Web Demo (HTTPS) 已启动: https://localhost:{WSS_PORT}/")
     else:
         logger.info("WSS 服务未启动（缺少证书）")
 

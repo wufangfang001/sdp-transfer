@@ -13,8 +13,8 @@
   <div class="controls" id="wss-notice" style="display:none; background:#fef3c7; border-color:#f59e0b;">
     <p style="margin:0; color:#92400e; font-size:0.85rem;">
       <strong>WSS 注意：</strong>使用 WSS 需要先信任自签名证书。
-      请先访问 <a href="https://localhost:8768" target="_blank" style="color:#7c3aed;">https://localhost:8768</a> ，
-      点击「高级」→「继续访问 localhost」，然后回到本页连接。
+      请先访问 <a id="wss-cert-link" href="https://localhost:8766" target="_blank" style="color:#7c3aed;">https://localhost:8766</a> ，
+      点击「高级」→「继续访问」，然后回到本页连接。
     </p>
   </div>
 
@@ -25,7 +25,7 @@
       <input
         type="text"
         id="server-url"
-        value="ws://localhost:8767"
+        value="ws://localhost:8765"
         placeholder="ws://localhost:8765 或 wss://localhost:8766"
         spellcheck="false"
       />

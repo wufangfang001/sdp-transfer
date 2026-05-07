@@ -79,7 +79,8 @@ function connectServer() {
   ws.onerror = (err) => {
     // 检测是否是 WSS 自签名证书问题
     if (url.startsWith("wss://")) {
-      log("WSS 连接失败：请先访问 https://localhost:8768 信任自签名证书");
+      const certUrl = `https://${location.hostname || 'localhost'}:8766`;
+      log(`WSS 连接失败：请先访问 ${certUrl} 信任自签名证书`);
     } else {
       log("WebSocket 错误，请检查服务器地址");
     }
@@ -90,7 +91,8 @@ function connectServer() {
     isConnected = false;
     setDot("disconnected");
     if (url.startsWith("wss://")) {
-      log("WSS 连接断开：请先访问 https://localhost:8768 信任自签名证书");
+      const certUrl = `https://${location.hostname || 'localhost'}:8766`;
+      log(`WSS 连接断开：请先访问 ${certUrl} 信任自签名证书`);
     } else {
       log("与服务器的连接已断开");
     }
@@ -177,6 +179,16 @@ async function handleSignalingMessage(msg) {
 // ---------------------------------------------------------------------------
 async function getLocalStream() {
   if (localStream) return localStream;
+  
+  // 检测是否支持 getUserMedia
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    const isSecure = location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";
+    if (!isSecure) {
+      throw new Error("摄像头/麦克风访问需要 HTTPS 或 localhost。请使用 https:// 访问，或配置反向代理。");
+    }
+    throw new Error("浏览器不支持 getUserMedia API");
+  }
+  
   try {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     localVideo.srcObject = localStream;
@@ -353,6 +365,38 @@ serverUrlInput.addEventListener("input", () => {
     wssNotice.style.display = "none";
   }
 });
+
+// 根据页面访问地址自动填写服务器地址
+(function autoFillServerUrl() {
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  const host = location.hostname || "localhost";
+  // WS 默认 8765, WSS 默认 8766
+  const port = location.protocol === "https:" ? "8766" : "8765";
+  serverUrlInput.value = `${protocol}//${host}:${port}`;
+  
+  // 更新 WSS 证书提示链接
+  const wssCertLink = document.getElementById("wss-cert-link");
+  if (wssCertLink) {
+    wssCertLink.href = `https://${host}:8766`;
+    wssCertLink.textContent = `https://${host}:8766`;
+  }
+})();
+
+// 检测是否为安全上下文（非 localhost 的 HTTP 无法访问摄像头）
+(function checkSecureContext() {
+  const isSecure = location.protocol === "https:" || 
+                   location.hostname === "localhost" || 
+                   location.hostname === "127.0.0.1";
+  
+  if (!isSecure && (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)) {
+    // 显示警告
+    const statusBar = document.getElementById("status-bar");
+    statusBar.innerHTML = `<span style="color:#ef4444;">⚠️ 非 HTTPS 访问无法使用摄像头/麦克风。请使用 localhost 或配置 HTTPS。</span>`;
+    // 禁用通话按钮
+    document.getElementById("btn-call").disabled = true;
+    document.getElementById("btn-call").title = "非 HTTPS 无法访问摄像头";
+  }
+})();
 
 // 页面关闭时清理
 window.addEventListener("beforeunload", () => {
