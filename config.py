@@ -4,11 +4,11 @@ WebRTC 信令服务器配置
 
 # WS 服务配置（明文，用于本地测试）
 WS_HOST = "0.0.0.0"
-WS_PORT = 8767
+WS_PORT = 8765
 
 # WSS 服务配置（加密，需要 SSL 证书）
 WSS_HOST = "0.0.0.0"
-WSS_PORT = 8768
+WSS_PORT = 8766
 
 # SSL 证书路径（由 generate_cert.py 生成）
 SSL_CERT_FILE = "cert.pem"
