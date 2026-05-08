@@ -30,9 +30,13 @@ from config import (
     WHIP_PORT,
     WHIPS_HOST,
     WHIPS_PORT,
+    WHIPS_HOST,
+    WHIPS_PORT,
 )
 from room_manager import RoomManager
 from whip_server import WHIPServer
+from whep_server import WHEPServer
+import aiohttp
 
 # 日志配置
 logging.basicConfig(
@@ -303,19 +307,42 @@ async def main() -> None:
     else:
         logger.info("WSS 服务未启动（缺少证书）")
 
-    # 启动 WHIP HTTP 服务
+    # 启动 WHIP/WHEP HTTP 服务 (共享端口，通过路径区分)
     whip_http_server = WHIPServer()
-    await whip_http_server.start(WHIP_HOST, WHIP_PORT)
-    logger.info(f"WHIP HTTP 服务已启动: http://{WHIP_HOST}:{WHIP_PORT}/whip/")
+    whep_http_server = WHEPServer()
+    
+    # 创建整合的应用
+    import aiohttp
+    combined_app = aiohttp.web.Application()
+    combined_app.add_routes([
+        # WHIP 路由
+        aiohttp.web.post("/whip/", whip_http_server.handle_post_whip),
+        aiohttp.web.delete("/whip/{resource_id}", whip_http_server.handle_delete_whip),
+        aiohttp.web.options("/whip/", whip_http_server.handle_options),
+        aiohttp.web.options("/whip/{resource_id}", whip_http_server.handle_options),
+        # WHEP 路由
+        aiohttp.web.post("/whep/", whep_http_server.handle_post_whep),
+        aiohttp.web.delete("/whep/{resource_id}", whep_http_server.handle_delete_whep),
+        aiohttp.web.options("/whep/", whep_http_server.handle_options),
+        aiohttp.web.options("/whep/{resource_id}", whep_http_server.handle_options),
+    ])
+    
+    whip_http_runner = aiohttp.web.AppRunner(combined_app)
+    await whip_http_runner.setup()
+    whip_http_site = aiohttp.web.TCPSite(whip_http_runner, WHIP_HOST, WHIP_PORT)
+    await whip_http_site.start()
+    logger.info(f"WHIP/WHEP HTTP 服务已启动: http://{WHIP_HOST}:{WHIP_PORT}/whip/ 和 /whep/")
 
-    whip_https_server = None
-    # 启动 WHIP HTTPS 服务
+    whip_https_runner = None
+    # 启动 WHIP/WHEP HTTPS 服务
     if ssl_ctx:
-        whip_https_server = WHIPServer()
-        await whip_https_server.start(WHIPS_HOST, WHIPS_PORT, ssl_context=ssl_ctx)
-        logger.info(f"WHIP HTTPS 服务已启动: https://{WHIPS_HOST}:{WHIPS_PORT}/whip/")
+        whip_https_runner = aiohttp.web.AppRunner(combined_app)
+        await whip_https_runner.setup()
+        whip_https_site = aiohttp.web.TCPSite(whip_https_runner, WHIPS_HOST, WHIPS_PORT, ssl_context=ssl_ctx)
+        await whip_https_site.start()
+        logger.info(f"WHIP/WHEP HTTPS 服务已启动: https://{WHIPS_HOST}:{WHIPS_PORT}/whip/ 和 /whep/")
     else:
-        logger.info("WHIP HTTPS 服务未启动（缺少证书）")
+        logger.info("WHIP/WHEP HTTPS 服务未启动（缺少证书）")
 
     logger.info("=" * 50)
     logger.info("所有服务已启动，按 Ctrl+C 停止")
@@ -326,10 +353,11 @@ async def main() -> None:
     except asyncio.CancelledError:
         pass
     finally:
-        # 停止 WHIP 服务
-        await whip_http_server.stop()
-        if whip_https_server:
-            await whip_https_server.stop()
+        # 停止 WHIP/WHEP 服务
+        if whip_http_runner:
+            await whip_http_runner.cleanup()
+        if whip_https_runner:
+            await whip_https_runner.cleanup()
         
         # 停止 WebSocket 服务
         for s in servers:

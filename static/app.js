@@ -1,6 +1,7 @@
 /**
- * WebRTC 信令客户端
+ * WebRTC 信令客户端 & WHIP 推流
  * 实现完整的 Offer/Answer/ICE Candidate 交换流程
+ * 支持 WHIP 协议推流测试
  */
 
 "use strict";
@@ -15,6 +16,13 @@ let iceServers = [];         // 服务端下发的 ICE 服务器列表
 let myRole = null;           // "caller" | "callee"
 let isConnected = false;     // WebSocket 是否已连接
 
+// WHIP 状态
+let whipMode = false;        // 是否为 WHIP 模式
+let whipResourceUrl = null;  // WHIP 资源 URL
+let whepResourceUrl = null;  // WHEP 资源 URL
+let whipPc = null;           // WHIP PeerConnection
+let whepPc = null;           // WHEP PeerConnection
+
 // ---------------------------------------------------------------------------
 // DOM 引用
 // ---------------------------------------------------------------------------
@@ -28,6 +36,55 @@ const btnConnect    = document.getElementById("btn-connect");
 const btnDisconnect = document.getElementById("btn-disconnect");
 const btnCall       = document.getElementById("btn-call");
 const btnHangup     = document.getElementById("btn-hangup");
+
+// WHIP DOM 引用
+const btnModeSignaling = document.getElementById("btn-mode-signaling");
+const btnModeWhip      = document.getElementById("btn-mode-whip");
+const signalingPanel   = document.getElementById("signaling-panel");
+const whipPanel        = document.getElementById("whip-panel");
+const whipUrlInput     = document.getElementById("whip-url");
+const btnWhipStart     = document.getElementById("btn-whip-start");
+const btnWhipStop      = document.getElementById("btn-whip-stop");
+const whipInfo         = document.getElementById("whip-info");
+const whipResourceId   = document.getElementById("whip-resource-id");
+const whipResourceUrlInput = document.getElementById("whip-resource-url");
+
+// WHEP DOM 引用
+const whepUrlInput     = document.getElementById("whep-url");
+const btnWhepStart     = document.getElementById("btn-whep-start");
+const btnWhepStop      = document.getElementById("btn-whep-stop");
+const whepInfo         = document.getElementById("whep-info");
+const whepResourceId   = document.getElementById("whep-resource-id");
+const whepResourceUrlInput = document.getElementById("whep-resource-url");
+
+const videoContainer   = document.getElementById("video-container");
+const remoteVideoBox   = document.getElementById("remote-video-box");
+
+// ---------------------------------------------------------------------------
+// 模式切换
+// ---------------------------------------------------------------------------
+function switchMode(mode) {
+  whipMode = (mode === "whip");
+  
+  btnModeSignaling.className = whipMode ? "btn btn-secondary" : "btn btn-primary";
+  btnModeWhip.className = whipMode ? "btn btn-primary" : "btn btn-secondary";
+  
+  signalingPanel.style.display = whipMode ? "none" : "block";
+  whipPanel.style.display = whipMode ? "block" : "none";
+  whipInfo.style.display = "none";
+  
+  // WHIP 模式隐藏远端视频
+  remoteVideoBox.style.display = whipMode ? "none" : "block";
+  
+  // 清理状态
+  if (whipMode) {
+    disconnectServer();
+  } else {
+    stopWhip();
+  }
+  
+  log(`已切换到 ${whipMode ? "WHIP 推流" : "WebSocket 信令"} 模式`);
+}
 
 // ---------------------------------------------------------------------------
 // 日志 / 状态显示
@@ -348,12 +405,272 @@ function hangup() {
 }
 
 // ---------------------------------------------------------------------------
+// WHIP 推流
+// ---------------------------------------------------------------------------
+async function startWhip() {
+  const url = whipUrlInput.value.trim();
+  if (!url) {
+    log("请输入 WHIP 服务器地址");
+    return;
+  }
+  
+  btnWhipStart.disabled = true;
+  
+  try {
+    // 获取本地媒体流
+    const stream = await getLocalStream();
+    
+    // 创建 PeerConnection (sendonly)
+    const config = { iceServers: iceServers.length ? iceServers : [{ urls: "stun:stun.l.google.com:19302" }] };
+    whipPc = new RTCPeerConnection(config);
+    
+    // 添加音视频轨道
+    stream.getTracks().forEach(track => whipPc.addTrack(track, stream));
+    
+    // 创建 sendonly Offer
+    const offer = await whipPc.createOffer();
+    await whipPc.setLocalDescription(offer);
+    
+    // 等待 ICE 收集完成
+    await waitForIceGathering(whipPc);
+    
+    log("WHIP: 发送 SDP Offer...");
+    
+    // 发送 WHIP 请求
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/sdp" },
+      body: whipPc.localDescription.sdp
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    // 获取资源 URL
+    whipResourceUrl = response.headers.get("Location");
+    const sdpAnswer = await response.text();
+    
+    // 设置远端描述
+    await whipPc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
+    
+    log("WHIP: 推流已建立");
+    
+    // 显示资源信息
+    if (whipResourceUrl) {
+      const resourceId = whipResourceUrl.split("/").pop();
+      whipResourceId.value = resourceId;
+      whipResourceUrlInput.value = whipResourceUrl;
+      whipInfo.style.display = "block";
+    }
+    
+    btnWhipStop.disabled = false;
+    
+    // 监听连接状态
+    whipPc.oniceconnectionstatechange = () => {
+      log(`WHIP ICE 状态: ${whipPc.iceConnectionState}`);
+      if (whipPc.iceConnectionState === "failed" || whipPc.iceConnectionState === "disconnected") {
+        log("WHIP 连接中断");
+      }
+    };
+    
+  } catch (err) {
+    log(`WHIP 推流失败: ${err.message}`);
+    btnWhipStart.disabled = false;
+    closeWhipConnection();
+  }
+}
+
+async function stopWhip() {
+  if (whipResourceUrl) {
+    try {
+      log("WHIP: 正在删除资源...");
+      await fetch(whipResourceUrl, { method: "DELETE" });
+      log("WHIP: 资源已删除");
+    } catch (err) {
+      console.warn("删除 WHIP 资源失败:", err);
+    }
+  }
+  
+  closeWhipConnection();
+  whipResourceUrl = null;
+  whipInfo.style.display = "none";
+  btnWhipStart.disabled = false;
+  btnWhipStop.disabled = true;
+  log("WHIP: 推流已停止");
+}
+
+function closeWhipConnection() {
+  if (whipPc) {
+    whipPc.oniceconnectionstatechange = null;
+    whipPc.close();
+    whipPc = null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WHEP 拉流
+// ---------------------------------------------------------------------------
+async function startWhep() {
+  const url = whepUrlInput.value.trim();
+  if (!url) {
+    log("请输入 WHEP 服务器地址");
+    return;
+  }
+  
+  btnWhepStart.disabled = true;
+  
+  try {
+    // 创建 PeerConnection (recvonly)
+    const config = { iceServers: iceServers.length ? iceServers : [{ urls: "stun:stun.l.google.com:19302" }] };
+    whepPc = new RTCPeerConnection(config);
+    
+    // 接收远端媒体流
+    whepPc.ontrack = (event) => {
+      log("WHEP: 收到远端媒体流");
+      remoteVideo.srcObject = event.streams[0];
+    };
+    
+    // 创建 recvonly Offer
+    const offer = await whepPc.createOffer({
+      offerToReceiveAudio: true,
+      offerToReceiveVideo: true
+    });
+    await whepPc.setLocalDescription(offer);
+    
+    // 等待 ICE 收集完成
+    await waitForIceGathering(whepPc);
+    
+    log("WHEP: 发送 SDP Offer...");
+    
+    // 发送 WHEP 请求
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/sdp" },
+      body: whepPc.localDescription.sdp
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    // 获取资源 URL
+    whepResourceUrl = response.headers.get("Location");
+    const sdpAnswer = await response.text();
+    
+    // 设置远端描述
+    await whepPc.setRemoteDescription({ type: "answer", sdp: sdpAnswer });
+    
+    log("WHEP: 拉流已建立");
+    
+    // 显示资源信息
+    if (whepResourceUrl) {
+      const resourceId = whepResourceUrl.split("/").pop();
+      whepResourceId.value = resourceId;
+      whepResourceUrlInput.value = whepResourceUrl;
+      whepInfo.style.display = "block";
+    }
+    
+    btnWhepStop.disabled = false;
+    
+    // 监听连接状态
+    whepPc.oniceconnectionstatechange = () => {
+      log(`WHEP ICE 状态: ${whepPc.iceConnectionState}`);
+      if (whepPc.iceConnectionState === "failed" || whepPc.iceConnectionState === "disconnected") {
+        log("WHEP 连接中断");
+      }
+    };
+    
+  } catch (err) {
+    log(`WHEP 拉流失败: ${err.message}`);
+    btnWhepStart.disabled = false;
+    closeWhepConnection();
+  }
+}
+
+async function stopWhep() {
+  if (whepResourceUrl) {
+    try {
+      log("WHEP: 正在删除资源...");
+      await fetch(whepResourceUrl, { method: "DELETE" });
+      log("WHEP: 资源已删除");
+    } catch (err) {
+      console.warn("删除 WHEP 资源失败:", err);
+    }
+  }
+  
+  closeWhepConnection();
+  whepResourceUrl = null;
+  whepInfo.style.display = "none";
+  remoteVideo.srcObject = null;
+  btnWhepStart.disabled = false;
+  btnWhepStop.disabled = true;
+  log("WHEP: 拉流已停止");
+}
+
+function closeWhepConnection() {
+  if (whepPc) {
+    whepPc.oniceconnectionstatechange = null;
+    whepPc.ontrack = null;
+    whepPc.close();
+    whepPc = null;
+  }
+}
+
+function waitForIceGathering(pc) {
+  return new Promise((resolve) => {
+    if (pc.iceGatheringState === "complete") {
+      resolve();
+    } else {
+      const checkState = () => {
+        if (pc.iceGatheringState === "complete") {
+          pc.removeEventListener("icegatheringstatechange", checkState);
+          resolve();
+        }
+      };
+      pc.addEventListener("icegatheringstatechange", checkState);
+      // 最多等待 5 秒
+      setTimeout(resolve, 5000);
+    }
+  });
+}
+
+// ---------------------------------------------------------------------------
 // 按钮事件绑定
 // ---------------------------------------------------------------------------
 btnConnect.addEventListener("click", connectServer);
 btnDisconnect.addEventListener("click", disconnectServer);
 btnCall.addEventListener("click", startCall);
 btnHangup.addEventListener("click", hangup);
+
+// WHIP/WHEP 事件绑定
+btnModeSignaling.addEventListener("click", () => switchMode("signaling"));
+btnModeWhip.addEventListener("click", () => switchMode("whip"));
+btnWhipStart.addEventListener("click", startWhip);
+btnWhipStop.addEventListener("click", stopWhip);
+btnWhepStart.addEventListener("click", startWhep);
+btnWhepStop.addEventListener("click", stopWhep);
+
+// WHIP/WHEP URL 输入监听
+whipUrlInput.addEventListener("input", () => {
+  const url = whipUrlInput.value.trim();
+  const wssNotice = document.getElementById("wss-notice");
+  if (url.startsWith("https://")) {
+    wssNotice.style.display = "block";
+  } else {
+    wssNotice.style.display = "none";
+  }
+});
+
+whepUrlInput.addEventListener("input", () => {
+  const url = whepUrlInput.value.trim();
+  const wssNotice = document.getElementById("wss-notice");
+  if (url.startsWith("https://")) {
+    wssNotice.style.display = "block";
+  } else {
+    wssNotice.style.display = "none";
+  }
+});
 
 // 检测 WSS 连接并显示提示
 serverUrlInput.addEventListener("input", () => {
@@ -373,6 +690,14 @@ serverUrlInput.addEventListener("input", () => {
   // WS 默认 8765, WSS 默认 8766
   const port = location.protocol === "https:" ? "8766" : "8765";
   serverUrlInput.value = `${protocol}//${host}:${port}`;
+  
+  // WHIP URL 自动填充
+  const whipProtocol = location.protocol === "https:" ? "https:" : "http:";
+  const whipPort = location.protocol === "https:" ? "8443" : "8080";
+  whipUrlInput.value = `${whipProtocol}//${host}:${whipPort}/whip/`;
+  
+  // WHEP URL 自动填充
+  whepUrlInput.value = `${whipProtocol}//${host}:${whipPort}/whep/`;
   
   // 更新 WSS 证书提示链接
   const wssCertLink = document.getElementById("wss-cert-link");
@@ -401,6 +726,8 @@ serverUrlInput.addEventListener("input", () => {
 // 页面关闭时清理
 window.addEventListener("beforeunload", () => {
   closePeerConnection();
+  closeWhipConnection();
+  closeWhepConnection();
   if (isConnected) sendMsg({ type: "leave" });
   if (ws) ws.close();
 });

@@ -11,6 +11,7 @@
 - 内置 HTTP 静态文件服务（无需额外 Web 服务器）
 - STUN/TURN 服务器配置支持
 - 完整的视频通话 Web Demo
+- WHIP/WHEP 协议支持（协议测试）
 
 ## 快速开始
 
@@ -106,6 +107,9 @@ ICE_SERVERS = [
 .
 ├── signaling_server.py   # 主信令服务器
 ├── room_manager.py       # 房间管理模块
+├── whip_server.py        # WHIP 协议服务器
+├── whep_server.py        # WHEP 协议服务器
+├── whip_resource_manager.py  # WHIP 资源管理
 ├── config.py             # 配置文件
 ├── generate_cert.py      # SSL 证书生成脚本
 ├── requirements.txt      # Python 依赖
@@ -121,3 +125,42 @@ ICE_SERVERS = [
 - Python 3.8+
 - websockets 12.0
 - cryptography 42.0.5
+- aiohttp 3.9+
+
+## WHIP/WHEP 协议支持
+
+本项目提供 WHIP (WebRTC-HTTP Ingestion Protocol) 和 WHEP (WebRTC-HTTP Egress Protocol) 的基本实现，用于协议测试。
+
+### 使用方式
+
+在 Web Demo 中切换到「WHIP 推流」模式：
+- **WHIP 推流**：发送本地摄像头视频流到服务器
+- **WHEP 拉流**：从服务器请求视频流
+
+### 重要限制
+
+> **注意：当前 WHIP/WHEP 实现为协议层面的简化版本，仅用于测试 SDP 交换流程。**
+
+**当前实现不包含：**
+- 真正的 WebRTC 媒体引擎
+- RTP 媒体包的接收和转发
+- 媒体流的实际传输
+
+**预期行为：**
+- 推流端可以看到自己的本地视频（来自摄像头）
+- 拉流端**不会看到远端画面**（因为服务器没有转发媒体流）
+
+**如需完整的 WHIP/WHEP 功能，需要集成 WebRTC 媒体服务器，例如：**
+- [MediaSoup](https://mediasoup.org/)
+- [Janus](https://janus.conf.meetecho.com/)
+- [Pion](https://pion.ly/)
+- [GStreamer](https://gstreamer.freedesktop.org/)
+
+### 完整视频通话测试
+
+如需测试完整的视频通话功能，请使用「WebSocket 信令」模式：
+1. 打开两个浏览器标签页
+2. 都连接到同一个信令服务器
+3. 输入相同的房间 ID
+4. 一方点击「开始通话」
+5. 双方即可进行音视频通话

@@ -3,23 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebRTC SDP 信令 Demo</title>
+  <title>WebRTC 信令 & WHIP Demo</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <h1>WebRTC SDP 信令交换 Demo</h1>
+  <h1>WebRTC 信令 & WHIP Demo</h1>
+  
+  <!-- 模式切换 -->
+  <div class="controls">
+    <div class="control-row">
+      <label>测试模式</label>
+      <button class="btn btn-primary" id="btn-mode-signaling">WebSocket 信令</button>
+      <button class="btn btn-secondary" id="btn-mode-whip">WHIP 推流</button>
+    </div>
+  </div>
 
   <!-- WSS 证书提示 -->
   <div class="controls" id="wss-notice" style="display:none; background:#fef3c7; border-color:#f59e0b;">
     <p style="margin:0; color:#92400e; font-size:0.85rem;">
-      <strong>WSS 注意：</strong>使用 WSS 需要先信任自签名证书。
+      <strong>WSS/WHIPS 注意：</strong>使用安全连接需先信任自签名证书。
       请先访问 <a id="wss-cert-link" href="https://localhost:8766" target="_blank" style="color:#7c3aed;">https://localhost:8766</a> ，
       点击「高级」→「继续访问」，然后回到本页连接。
     </p>
   </div>
 
-  <!-- 控制面板 -->
-  <div class="controls">
+  <!-- WebSocket 信令面板 -->
+  <div class="controls" id="signaling-panel">
     <div class="control-row">
       <label for="server-url">服务器</label>
       <input
@@ -48,15 +57,73 @@
     </div>
   </div>
 
+  <!-- WHIP/WHEP 面板 -->
+  <div class="controls" id="whip-panel" style="display:none;">
+    <div class="control-row">
+      <label for="whip-url">WHIP 服务器</label>
+      <input
+        type="text"
+        id="whip-url"
+        value="http://localhost:8080/whip/"
+        placeholder="http://localhost:8080/whip/ 或 https://localhost:8443/whip/"
+        spellcheck="false"
+      />
+    </div>
+    <div class="control-row">
+      <button class="btn btn-success" id="btn-whip-start">开始推流</button>
+      <button class="btn btn-danger" id="btn-whip-stop" disabled>停止推流</button>
+    </div>
+    
+    <hr style="margin: 16px 0; border: none; border-top: 1px solid #e5e7eb;">
+    
+    <div class="control-row">
+      <label for="whep-url">WHEP 服务器</label>
+      <input
+        type="text"
+        id="whep-url"
+        value="http://localhost:8080/whep/"
+        placeholder="http://localhost:8080/whep/ 或 https://localhost:8443/whep/"
+        spellcheck="false"
+      />
+    </div>
+    <div class="control-row">
+      <button class="btn btn-primary" id="btn-whep-start">开始拉流</button>
+      <button class="btn btn-danger" id="btn-whep-stop" disabled>停止拉流</button>
+    </div>
+  </div>
+
   <!-- 视频区域 -->
-  <div class="video-container">
+  <div class="video-container" id="video-container">
     <div class="video-box">
       <h3>本地视频（自己）</h3>
       <video id="local-video" autoplay muted playsinline></video>
     </div>
-    <div class="video-box">
+    <div class="video-box" id="remote-video-box">
       <h3>远端视频（对方）</h3>
       <video id="remote-video" autoplay playsinline></video>
+    </div>
+  </div>
+  
+  <!-- WHIP/WHEP 信息面板 -->
+  <div class="controls" id="whip-info" style="display:none;">
+    <div class="control-row">
+      <label>推流资源 ID</label>
+      <input type="text" id="whip-resource-id" readonly placeholder="推流后显示" />
+    </div>
+    <div class="control-row">
+      <label>推流资源 URL</label>
+      <input type="text" id="whip-resource-url" readonly placeholder="推流后显示" style="flex:2" />
+    </div>
+  </div>
+  
+  <div class="controls" id="whep-info" style="display:none;">
+    <div class="control-row">
+      <label>拉流资源 ID</label>
+      <input type="text" id="whep-resource-id" readonly placeholder="拉流后显示" />
+    </div>
+    <div class="control-row">
+      <label>拉流资源 URL</label>
+      <input type="text" id="whep-resource-url" readonly placeholder="拉流后显示" style="flex:2" />
     </div>
   </div>
 
