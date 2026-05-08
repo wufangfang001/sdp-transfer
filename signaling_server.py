@@ -1,6 +1,7 @@
 """
 WebRTC SDP 信令交换服务器
 支持 WS（明文）和 WSS（加密）双端口
+支持 WHIP (WebRTC-HTTP ingestion protocol)
 完全兼容 WebRTC SDP/ICE 交互协议标准
 """
 
@@ -25,8 +26,13 @@ from config import (
     WS_PORT,
     WSS_HOST,
     WSS_PORT,
+    WHIP_HOST,
+    WHIP_PORT,
+    WHIPS_HOST,
+    WHIPS_PORT,
 )
 from room_manager import RoomManager
+from whip_server import WHIPServer
 
 # 日志配置
 logging.basicConfig(
@@ -258,7 +264,7 @@ def build_ssl_context() -> ssl.SSLContext | None:
     if not (os.path.exists(SSL_CERT_FILE) and os.path.exists(SSL_KEY_FILE)):
         logger.warning(
             f"SSL 证书文件不存在（{SSL_CERT_FILE} / {SSL_KEY_FILE}），"
-            "WSS 服务将不会启动。请先运行: python generate_cert.py"
+            "WSS/WHIPS 服务将不会启动。请先运行: python generate_cert.py"
         )
         return None
 
@@ -297,17 +303,39 @@ async def main() -> None:
     else:
         logger.info("WSS 服务未启动（缺少证书）")
 
-    logger.info("按 Ctrl+C 停止服务")
+    # 启动 WHIP HTTP 服务
+    whip_http_server = WHIPServer()
+    await whip_http_server.start(WHIP_HOST, WHIP_PORT)
+    logger.info(f"WHIP HTTP 服务已启动: http://{WHIP_HOST}:{WHIP_PORT}/whip/")
+
+    whip_https_server = None
+    # 启动 WHIP HTTPS 服务
+    if ssl_ctx:
+        whip_https_server = WHIPServer()
+        await whip_https_server.start(WHIPS_HOST, WHIPS_PORT, ssl_context=ssl_ctx)
+        logger.info(f"WHIP HTTPS 服务已启动: https://{WHIPS_HOST}:{WHIPS_PORT}/whip/")
+    else:
+        logger.info("WHIP HTTPS 服务未启动（缺少证书）")
+
+    logger.info("=" * 50)
+    logger.info("所有服务已启动，按 Ctrl+C 停止")
+    logger.info("=" * 50)
 
     try:
         await asyncio.Future()  # 永久运行
     except asyncio.CancelledError:
         pass
     finally:
+        # 停止 WHIP 服务
+        await whip_http_server.stop()
+        if whip_https_server:
+            await whip_https_server.stop()
+        
+        # 停止 WebSocket 服务
         for s in servers:
             s.close()
         await asyncio.gather(*[s.wait_closed() for s in servers])
-        logger.info("服务已停止")
+        logger.info("所有服务已停止")
 
 
 if __name__ == "__main__":

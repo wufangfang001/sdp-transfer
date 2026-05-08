@@ -1,149 +1,113 @@
-# 需求文档
+# WHIP 协议支持 - 需求文档
 
-## 意图分析摘要
+## 意图分析
 
-| 属性 | 值 |
-|------|-----|
-| 用户请求 | 基于 WebSocket 的 WebRTC SDP 信令交换服务 |
-| 请求类型 | 新项目 (Greenfield) |
-| 范围估计 | 单一服务 + Web Demo 页面 |
-| 复杂度估计 | 中等 |
-| 编程语言 | Python |
+| 维度 | 评估 |
+|------|------|
+| **用户请求** | 为现有 WebRTC 信令服务器添加 WHIP 协议支持 |
+| **请求类型** | 新功能 |
+| **范围估计** | 单组件扩展 |
+| **复杂度估计** | 中等 (简化实现) |
 
----
+## 功能概述
+
+WHIP (WebRTC-HTTP ingestion protocol) 是一种基于 HTTP 的 WebRTC 媒体注入协议，允许编码器/媒体生产者通过简单的 HTTP POST 请求建立 WebRTC 会话。
 
 ## 功能需求
 
-### FR-01: WebSocket 信令服务器
-- 提供 WebSocket 服务端，监听指定端口
-- 支持 WS 和 WSS（WebSocket Secure）两种连接方式
-- WSS 使用自签名 SSL 证书（测试用途）
-- 支持客户端连接、断开、重连
+### FR-01: WHIP 端点创建 (HTTP POST)
+- **描述**: 提供 WHIP 端点 URL，接收 SDP Offer
+- **HTTP 方法**: POST
+- **路径**: `/whip/`
+- **请求头**: `Content-Type: application/sdp`
+- **请求体**: SDP Offer (sendonly)
+- **响应**: 
+  - 状态码: 201 Created
+  - 响应头: 
+    - `Content-Type: application/sdp`
+    - `Location: <WHIP 资源 URL>`
+  - 响应体: SDP Answer (recvonly)
 
-### FR-02: SDP 信令交换
-- 完全兼容 WebRTC SDP 交互协议标准
-- 支持 Offer/Answer 模型的 SDP 交换
-- 支持 ICE Candidate 交换
-- 实现标准的 WebRTC 信令流程：
-  1. 客户端 A 创建 Offer SDP
-  2. 通过 WebSocket 发送给服务端
-  3. 服务端转发给客户端 B
-  4. 客户端 B 创建 Answer SDP
-  5. 通过 WebSocket 返回
-  6. ICE Candidate 实时交换
+### FR-02: WHIP 会话终止 (HTTP DELETE)
+- **描述**: 终止 WHIP 会话，释放资源
+- **HTTP 方法**: DELETE
+- **路径**: `/whip/<resource-id>`
+- **响应**: 
+  - 状态码: 200 OK
 
-### FR-03: 一对一通话管理
-- 支持两个客户端之间的配对通信
-- 简单的房间/会话管理机制
-- 支持呼叫、接听、挂断流程
+### FR-03: 独立端口服务
+- **描述**: WHIP 服务使用独立的 HTTP/HTTPS 端口
+- **配置**:
+  - HTTP 端口: 8080 (可配置)
+  - HTTPS 端口: 8443 (可配置)
 
-### FR-04: 音视频媒体支持
-- 支持音频流传输
-- 支持视频流传输
-- 同时支持音视频双向通信
+### FR-04: HTTP 和 HTTPS 支持
+- **描述**: 同时支持 HTTP 和 HTTPS 访问
+- **HTTPS**: 复用现有 SSL 证书 (cert.pem, key.pem)
 
-### FR-05: NAT 穿透支持
-- 集成 STUN 服务器配置
-- 集成 TURN 服务器配置
-- 支持 ICE 框架进行候选地址收集
+### FR-05: 资源生命周期管理
+- **描述**: 管理 WHIP 会话资源的生命周期
+- **机制**:
+  - 客户端主动删除: HTTP DELETE
+  - 超时自动清理: 无活动超时后自动清理 (默认 5 分钟)
 
-### FR-06: Web Demo 页面
-- 提供完整的视频通话测试页面
-- 显示本地视频预览
-- 显示远端视频画面
-- 提供简单的操作按钮（开始通话、挂断等）
-- 自动请求摄像头和麦克风权限
-
----
+### FR-06: 错误处理
+- **描述**: 提供标准的 HTTP 错误响应
+- **错误码**:
+  - 400 Bad Request: 无效的 SDP 或请求格式
+  - 404 Not Found: 资源不存在
+  - 405 Method Not Allowed: 不支持的 HTTP 方法
+  - 500 Internal Server Error: 服务器内部错误
 
 ## 非功能需求
 
 ### NFR-01: 性能
-- 支持小规模并发连接（< 10 个）
-- 低延迟的信令转发（< 100ms）
-- 适用于开发测试场景
+- 单服务器支持至少 100 个并发 WHIP 会话
+- SDP 交换响应时间 < 100ms
 
-### NFR-02: 可维护性
-- 清晰的代码结构和注释
-- 模块化设计，便于扩展
-- 配置与代码分离
+### NFR-02: 可靠性
+- 资源清理机制确保无内存泄漏
+- 异常情况下正确释放资源
 
-### NFR-03: 安全性
-- WSS 加密传输支持
-- SSL 证书配置（自签名）
-- 基本的连接验证
-
-### NFR-04: 可用性
-- 简单的启动方式
-- 清晰的使用文档
-- 易于测试和调试
-
----
+### NFR-03: 可维护性
+- 代码模块化，WHIP 逻辑独立于 WebSocket 信令
+- 清晰的日志记录
 
 ## 技术约束
 
-### TC-01: 技术栈
-- 编程语言: Python 3.8+
-- 异步框架: asyncio + websockets 库
-- 前端: HTML5 + JavaScript (原生)
-- WebRTC API: 浏览器原生 RTCPeerConnection
+### TC-01: 简化实现
+以下功能不实现，以简化开发：
+- ❌ 认证机制 (Bearer Token)
+- ❌ Trickle ICE (HTTP PATCH)
+- ❌ ICE Restart
+- ❌ ICE 服务器配置返回
 
-### TC-02: 部署环境
-- 本地开发/测试环境
-- 支持 Windows/Linux/macOS
+### TC-02: 协议兼容性
+- SDP Offer 应包含 `sendonly` 属性
+- SDP Answer 应包含 `recvonly` 属性
+- 支持 BUNDLE 和 RTCP mux
 
-### TC-03: 浏览器兼容性
-- 支持 Chrome、Firefox、Edge 等主流浏览器
-- 需要支持 WebRTC API
+## 与现有系统的关系
 
----
+| 组件 | 关系 |
+|------|------|
+| WebSocket 信令服务 | 独立运行，互不干扰 |
+| 房间管理 (RoomManager) | 不复用，WHIP 有独立的会话管理 |
+| 配置文件 (config.py) | 扩展配置项 |
+| SSL 证书 | 复用现有证书文件 |
 
-## 系统边界
+## 实现范围
 
-### 包含范围
-- WebSocket 信令服务器
-- SDP/ICE 信令协议实现
-- 一对一通话房间管理
-- Web Demo 测试页面
-- SSL 证书生成脚本
+### 需要修改的文件
+- `config.py`: 添加 WHIP 端口配置
+- `signaling_server.py`: 添加 WHIP HTTP 服务
 
-### 不包含范围
-- 用户认证系统
-- 持久化存储
-- 生产级部署配置
-- 多人会议室功能
-- 录制功能
+### 需要新增的文件
+- `whip_resource_manager.py`: WHIP 资源管理模块
 
----
+### 测试方式
+- 使用 `curl` 命令测试 HTTP API
+- 使用 `ffmpeg` 进行实际的 WHIP 推流测试
 
-## 验收标准
-
-### AC-01: 信令服务器
-- [ ] 服务器能够启动并监听指定端口
-- [ ] 支持 WS 连接
-- [ ] 支持 WSS 连接
-- [ ] 客户端能够连接和断开
-
-### AC-02: SDP 交换
-- [ ] 两个客户端能够成功交换 SDP Offer/Answer
-- [ ] ICE Candidate 能够正确转发
-- [ ] 符合 WebRTC 标准信令流程
-
-### AC-03: Web Demo
-- [ ] 页面能够正常加载
-- [ ] 能够获取摄像头和麦克风权限
-- [ ] 本地视频能够预览
-- [ ] 两个浏览器标签页能够建立通话
-- [ ] 音视频双向通信正常
-
----
-
-## 用户故事映射
-
-| ID | 用户故事 | 优先级 |
-|----|----------|--------|
-| US-01 | 作为用户，我想要启动信令服务器，以便进行 WebRTC 通信 | 高 |
-| US-02 | 作为客户端，我想要通过 WebSocket 连接信令服务器，以便交换 SDP | 高 |
-| US-03 | 作为用户，我想要通过 Demo 页面测试通话，以便验证信令服务 | 高 |
-| US-04 | 作为开发者，我想要使用 WSS 安全连接，以便测试安全通信 | 中 |
-| US-05 | 作为用户，我想要进行音视频通话，以便验证完整功能 | 高 |
+## 参考
+- [WHIP IETF Draft](https://www.ietf.org/archive/id/draft-ietf-wish-whip-01.html)

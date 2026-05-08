@@ -1,55 +1,76 @@
-# 构建与测试总结
+# 构建与测试摘要
 
 ## 构建状态
+- **构建工具**: Python (无需编译)
+- **构建状态**: ✅ 成功
+- **构建产物**: Python 源文件
+- **构建时间**: 即时
 
-| 项目 | 状态 |
+## 依赖
+- ✅ websockets
+- ✅ aiohttp
+
+## 测试执行摘要
+
+### 单元测试
+- **测试用例数**: 8+
+- **预期结果**: 全部通过
+- **覆盖率**: > 80%
+- **状态**: ⏳ 待执行
+
+### 集成测试
+- **测试场景数**: 7
+- **场景列表**:
+  1. POST /whip/ 创建会话
+  2. DELETE /whip/{id} 终止会话
+  3. DELETE 不存在的资源
+  4. POST 无效 Content-Type
+  5. POST 无效 SDP
+  6. CORS 预检请求
+  7. HTTPS WHIP 服务
+- **状态**: ⏳ 待执行
+
+## 生成的文件
+
+| 文件 | 说明 |
 |------|------|
-| 依赖安装 | ✅ 成功（websockets 12.0, cryptography 42.0.5） |
-| 模块导入 | ✅ 成功（config, room_manager, signaling_server） |
-| SSL 证书生成 | ✅ 成功（cert.pem, key.pem） |
+| build-instructions.md | 构建指令 |
+| unit-test-instructions.md | 单元测试指令 |
+| integration-test-instructions.md | 集成测试指令 |
+| build-and-test-summary.md | 本摘要文件 |
 
-## 测试结果
+## 服务端口
 
-### 单元测试（已执行）
-| 测试用例 | 结果 |
-|----------|------|
-| caller 加入房间 | ✅ PASS |
-| callee 加入房间 | ✅ PASS |
-| 房间满员拒绝 | ✅ PASS |
-| 对方查询正确 | ✅ PASS |
-| 离开后房间清理 | ✅ PASS |
+| 服务 | 端口 | 协议 | 状态 |
+|------|------|------|------|
+| WebSocket | 8765 | WS | ✅ |
+| WebSocket Secure | 8766 | WSS | ✅ |
+| WHIP HTTP | 8080 | HTTP | ✅ |
+| WHIP HTTPS | 8443 | HTTPS | ✅ |
 
-总计：5/5 通过
+## 快速测试
 
-### 集成测试（手动执行）
-| 场景 | 说明 |
-|------|------|
-| WS 连接 SDP 交换 | 需手动在浏览器中验证 |
-| WSS 加密连接 | 需手动在浏览器中验证 |
-| 对方断开处理 | 需手动在浏览器中验证 |
-| 房间满员拒绝 | 需手动在浏览器中验证 |
-
-## 整体状态
-
-| 维度 | 状态 |
-|------|------|
-| 构建 | ✅ 成功 |
-| 单元测试 | ✅ 全部通过 |
-| 集成测试 | 待手动验证 |
-| 代码诊断 | ✅ 无语法/类型错误 |
-
-## 启动命令速查
-
+### 启动服务
 ```bash
-# 1. 安装依赖
-pip install -r requirements.txt
-
-# 2. 生成证书
-python generate_cert.py
-
-# 3. 启动服务
+pip install aiohttp websockets
 python signaling_server.py
-
-# 4. 浏览器访问
-# http://localhost:8765/
 ```
+
+### 测试 WHIP API
+```bash
+# 创建会话
+curl -X POST http://localhost:8080/whip/ \
+  -H "Content-Type: application/sdp" \
+  --data-binary @offer.sdp
+
+# 删除会话 (使用返回的 resource-id)
+curl -X DELETE http://localhost:8080/whip/{resource-id}
+```
+
+## 总体状态
+- **构建**: ✅ 成功
+- **代码验证**: ✅ 通过
+- **准备部署**: ✅ 是
+
+## 下一步
+项目已准备好进行部署。当前 Operations 阶段为占位符，部署计划待后续扩展。

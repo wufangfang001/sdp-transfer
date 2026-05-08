@@ -10,6 +10,17 @@ WS_PORT = 8765
 WSS_HOST = "0.0.0.0"
 WSS_PORT = 8766
 
+# WHIP 服务配置（HTTP）
+WHIP_HOST = "0.0.0.0"
+WHIP_PORT = 8080
+
+# WHIP 服务配置（HTTPS）
+WHIPS_HOST = "0.0.0.0"
+WHIPS_PORT = 8443
+
+# WHIP 资源超时配置（秒）
+WHIP_RESOURCE_TIMEOUT = 300  # 5 分钟无活动自动清理
+
 # SSL 证书路径（由 generate_cert.py 生成）
 SSL_CERT_FILE = "cert.pem"
 SSL_KEY_FILE = "key.pem"
