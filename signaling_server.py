@@ -172,7 +172,13 @@ async def handle_leave(ws: WebSocketServerProtocol) -> None:
 async def signaling_handler(ws: WebSocketServerProtocol) -> None:
     """每个 WebSocket 连接的主处理循环"""
     remote = ws.remote_address
-    protocol = "WSS" if ws.secure else "WS"
+    # Support both old websockets and new API (15+)
+    if hasattr(ws, 'secure'):
+        protocol = "WSS" if ws.secure else "WS"
+    else:
+        # For websockets 15+, check transport or use local_port
+        local_port = ws.local_address[1] if hasattr(ws, 'local_address') and ws.local_address else 0
+        protocol = "WSS" if local_port == WSS_PORT else "WS"
     logger.info(f"[{protocol}] 新连接: {remote}")
 
     try:
@@ -221,7 +227,11 @@ async def http_handler(path: str, request_headers) -> tuple | None:
     WebSocket 升级请求（含 Upgrade: websocket 头）直接放行（返回 None）。
     """
     # WebSocket 升级请求：放行，交给 websockets 处理握手
-    upgrade = request_headers.get("Upgrade", "")
+    # Support both dict-like (old websockets) and Request object (websockets 15+)
+    if hasattr(request_headers, 'headers'):
+        upgrade = request_headers.headers.get("Upgrade", "")
+    else:
+        upgrade = request_headers.get("Upgrade", "")
     if upgrade.lower() == "websocket":
         return None
 
