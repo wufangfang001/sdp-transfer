@@ -15,6 +15,7 @@ let localStream = null;      // 本地媒体流
 let iceServers = [];         // 服务端下发的 ICE 服务器列表
 let myRole = null;           // "caller" | "callee"
 let isConnected = false;     // WebSocket 是否已连接
+let pendingRemoteCandidates = []; // 远端 SDP 就绪前缓存的 ICE candidates
 
 // WHIP 状态
 let whipMode = false;        // 是否为 WHIP 模式
@@ -267,7 +268,10 @@ function createPeerConnection() {
   // 本地 ICE Candidate 收集完成后发送给对方
   pc.onicecandidate = (event) => {
     if (event.candidate) {
+      log(`本地 ICE Candidate: ${event.candidate.candidate}`);
       sendMsg({ type: "ice-candidate", candidate: event.candidate });
+    } else {
+      log("本地 ICE Candidate 收集完成");
     }
   };
 
@@ -294,6 +298,25 @@ function createPeerConnection() {
   return pc;
 }
 
+async function flushPendingRemoteCandidates() {
+  if (!pc || !pc.remoteDescription || pendingRemoteCandidates.length === 0) {
+    return;
+  }
+
+  const queued = pendingRemoteCandidates;
+  pendingRemoteCandidates = [];
+
+  for (const candidate of queued) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch (err) {
+      console.warn("添加暂存 ICE Candidate 失败:", err);
+    }
+  }
+
+  log(`已补加 ${queued.length} 个暂存 ICE Candidate`);
+}
+
 // ---------------------------------------------------------------------------
 // RTCPeerConnection 清理（不影响房间状态）
 // ---------------------------------------------------------------------------
@@ -305,6 +328,7 @@ function closePeerConnection() {
     pc.close();
     pc = null;
   }
+  pendingRemoteCandidates = [];
   if (localStream) {
     localStream.getTracks().forEach(t => t.stop());
     localStream = null;
@@ -353,6 +377,7 @@ async function handleOffer(sdp) {
     stream.getTracks().forEach(track => pc.addTrack(track, stream));
 
     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    await flushPendingRemoteCandidates();
 
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -371,6 +396,7 @@ async function handleOffer(sdp) {
 async function handleAnswer(sdp) {
   try {
     await pc.setRemoteDescription(new RTCSessionDescription(sdp));
+    await flushPendingRemoteCandidates();
     log("已设置远端 SDP Answer，等待 ICE 协商...");
   } catch (err) {
     log(`处理 Answer 失败: ${err.message}`);
@@ -382,10 +408,19 @@ async function handleAnswer(sdp) {
 // ---------------------------------------------------------------------------
 async function handleRemoteIceCandidate(candidate) {
   if (!pc) return;
+  if (!pc.remoteDescription) {
+    pendingRemoteCandidates.push(candidate);
+    log(`远端 SDP 未就绪，暂存 ICE Candidate（${pendingRemoteCandidates.length}）`);
+    return;
+  }
   try {
+    if (candidate && candidate.candidate) {
+      log(`收到远端 ICE Candidate: ${candidate.candidate}`);
+    }
     await pc.addIceCandidate(new RTCIceCandidate(candidate));
   } catch (err) {
     console.warn("添加 ICE Candidate 失败:", err);
+    log(`添加远端 ICE Candidate 失败: ${err.message}`);
   }
 }
 

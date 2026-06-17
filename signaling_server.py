@@ -140,10 +140,17 @@ async def handle_ice_candidate(ws: WebSocketServerProtocol, msg: dict) -> None:
     peer = room_manager.get_peer(ws)
     if peer is None:
         # 对方可能已断开，静默忽略
+        logger.info(f"[handle_ice_candidate] peer missing, drop candidate from ws={id(ws)}")
         return
     candidate = msg.get("candidate")
     if candidate is None:
+        logger.info(f"[handle_ice_candidate] candidate missing from ws={id(ws)}")
         return
+    cand_str = candidate.get("candidate") if isinstance(candidate, dict) else str(candidate)
+    logger.info(
+        f"[handle_ice_candidate] room_id={room_manager.get_room_id(ws)} "
+        f"from={id(ws)} to={id(peer)} candidate={cand_str}"
+    )
     await send_json(peer, {"type": "ice-candidate", "candidate": candidate})
 
 
